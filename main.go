@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -30,10 +31,10 @@ type Visit struct {
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 	const ROUTE_ID string = "routeId"
-	const IP string = "x-forwarded-for"
+	const IP string = "X-Forwarded-For"
 	const LANGUAGE string = "accept-language"
 	const REFERER string = "referer"
-	const AGENT string = "user-agent"
+	const AGENT string = "User-Agent"
 
 	//get the url we need to redirect to
 	var redirectUrl Link
@@ -42,15 +43,18 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 	//link visit is the information about the person visiting the link
 	Visit := &Visit{
 		PK:       fmt.Sprintf("LINK#%s", routeId),
-		SK:       fmt.Sprintf("VISIT#%s", fmt.Sprint(time.Now().UnixNano()/1e6)),
+		SK:       fmt.Sprintf("VISIT#%s", fmt.Sprint(time.Now().UnixNano()/1e6)), //get unix time in ms
 		IP:       req.Headers[IP],
 		Language: req.Headers[LANGUAGE],
 		Referer:  req.Headers[REFERER],
 		Agent:    req.Headers[AGENT],
 	}
 
-	db := dynamo.New(session.New(), &aws.Config{Region: aws.String("us-east-2")})
-	table := db.Table("linker-v1")
+	var region = os.Getenv("AWS_REGION")
+	var tableName = os.Getenv("DDB_TABLE_NAME")
+
+	db := dynamo.New(session.New(), &aws.Config{Region: aws.String(region)})
+	table := db.Table(tableName)
 
 	lookupErr := table.Get("PK", fmt.Sprintf("LINK#%s", routeId)).Range("SK", dynamo.Equal, "USER#dan@strop.com").One(&redirectUrl)
 
@@ -63,11 +67,6 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 	if err != nil {
 		fmt.Println("error:" + err.Error())
 	}
-
-	fmt.Print("RedirectURL")
-	fmt.Println(redirectUrl)
-
-	fmt.Println("URL:" + redirectUrl.Url)
 
 	proxyRes := events.APIGatewayProxyResponse{
 		Headers:    map[string]string{"location": redirectUrl.Url},
