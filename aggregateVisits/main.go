@@ -34,6 +34,39 @@ func parseAgentString(agent string) V.UserAgent {
 	}
 }
 
+func updateVisitCounter(vc V.VisitCounter, l V.Location) V.VisitCounter {
+	//if both country and state are already set, just increment the totals
+	if _, ok := vc.Locations[l.Country][l.State]; ok {
+		vc.Total += 1
+		vc.Locations[l.Country][l.State] += 1
+		vc.Locations[l.Country]["Total"] += 1
+		//if just country is set, then add the state and increment the total
+	} else if _, ok := vc.Locations[l.Country]; ok {
+		vc.Total += 1
+		vc.Locations[l.Country][l.State] = 1
+		vc.Locations[l.Country]["Total"] += 1
+		//if the country isnt set, set the country and the state
+	} else {
+		vc.Total += 1
+		vc.Locations[l.Country] = map[string]int{
+			"Total": 1,
+			l.State: 1,
+		}
+	}
+	return vc
+}
+
+func updateLanguageCounter(lc map[string]int, l string) map[string]int {
+	//if the language is already in the map, increment it
+	if _, ok := lc[l]; ok {
+		lc[l] += 1
+		//if its not already in the list, set it to one
+	} else {
+		lc[l] = 1
+	}
+	return lc
+}
+
 func Handler(ctx context.Context, e events.DynamoDBEvent) error {
 
 	//connect to the table
@@ -95,9 +128,6 @@ func Handler(ctx context.Context, e events.DynamoDBEvent) error {
 			//set the language
 			visit.Language = strings.Split(visit.Language, ",")[0]
 
-			fmt.Print("Visit:")
-			fmt.Println(visit)
-
 			v, marshallErr := dynamo.MarshalItem(visit)
 
 			if marshallErr != nil {
@@ -105,8 +135,31 @@ func Handler(ctx context.Context, e events.DynamoDBEvent) error {
 				fmt.Println(visit)
 			}
 
+			if marshallErr != nil {
+				fmt.Print("Error with marshalling: ")
+				fmt.Println(visit)
+			}
+
+			//update the VISIT item
 			table.Update("PK", v["PK"]).Range("SK", v["SK"]).Set("AgentHeader", v["AgentHeader"]).Set("Location", v["Location"]).Set("IP", v["IP"]).Set("Language", v["Language"]).Set("UserAgent", v["UserAgent"]).Run()
-			//table.Update("PK", v["PK"]).Range("SK", v["USER"]).SetExpr("Views.locations.$ = if_not_exists(Views.locations.$, ?) + ?", location.Country, location.Country, 0, 1).Run()
+
+			//get the LINK item in order to aggregate
+			var visits V.Link
+			table.Get("PK", v["PK"]).Range("SK", dynamo.Equal, v["User"]).One(&visits)
+
+			vc := updateVisitCounter(visits.Visits, visit.Location)
+			lc := updateLanguageCounter(visits.Languages, visit.Language)
+
+			mvc, marshallErr := dynamo.MarshalItem(vc)
+			mlc, _ := dynamo.MarshalItem(lc)
+
+			//update the LINK item with new aggregated data
+			e := table.Update("PK", v["PK"]).Range("SK", v["User"]).Set("Visits", mvc).Set("Languages", mlc).Run()
+
+			if e != nil {
+				fmt.Print("ERROR:")
+				fmt.Println(e.Error())
+			}
 
 		}
 	}

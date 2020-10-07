@@ -13,9 +13,16 @@ import (
 )
 
 type Link struct {
-	PK  string
-	SK  string
-	Url string
+	PK        string
+	SK        string
+	Url       string
+	Visits    VisitCounter
+	Languages map[string]int
+}
+
+type VisitCounter struct {
+	Total     int
+	Locations map[string]map[string]int
 }
 
 type Visit struct {
@@ -52,6 +59,7 @@ func Create(event map[string]events.DynamoDBAttributeValue) (Visit, error) {
 		Language:    event["Language"].String(),
 		Referer:     event["Referer"].String(),
 		AgentHeader: event["AgentHeader"].String(),
+		User:        event["User"].String(),
 	}
 
 	var err error
