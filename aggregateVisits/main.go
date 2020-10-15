@@ -67,6 +67,59 @@ func updateLanguageCounter(lc map[string]int, l string) map[string]int {
 	return lc
 }
 
+func updateRefererCounter(rc map[string]int, r string) map[string]int {
+
+	fmt.Println("!!!!!!!!!!!!" + r)
+
+	//if the language is already in the map, increment it
+	if _, ok := rc[r]; ok {
+		rc[r] += 1
+		//if its not already in the list, set it to one
+	} else {
+		rc[r] = 1
+	}
+	return rc
+}
+
+func updateUserAgentCounter(uac V.UserAgentCounter, ua V.UserAgent) V.UserAgentCounter {
+	//if the browser is already in the map, increment it
+	fmt.Print("!!!!!!!!!!!!")
+	fmt.Println(uac)
+	if _, ok := uac.Browser[ua.Browser]; ok {
+		uac.Browser[ua.Browser] += 1
+		//if its not already in the list, set it to one
+	} else {
+		uac.Browser = map[string]int{
+			ua.Browser: 1,
+		}
+	}
+	//if the OS is already in the map, increment it
+	if _, ok := uac.OS[ua.OS]; ok {
+		uac.OS[ua.OS] += 1
+		//if its not already in the list, set it to one
+	} else {
+		uac.OS = map[string]int{
+			ua.OS: 1,
+		}
+	}
+	//if the Platform is already in the map, increment it
+	if _, ok := uac.Platform[ua.Platform]; ok {
+		uac.Platform[ua.Platform] += 1
+		//if its not already in the list, set it to one
+	} else {
+		uac.Platform = map[string]int{
+			ua.Platform: 1,
+		}
+	}
+	//increment the isMobile
+	if uac.IsMobile == 0 && ua.IsMobile {
+		uac.IsMobile = 1
+	} else if ua.IsMobile {
+		uac.IsMobile += 1
+	}
+	return uac
+}
+
 func Handler(ctx context.Context, e events.DynamoDBEvent) error {
 
 	//connect to the table
@@ -92,8 +145,6 @@ func Handler(ctx context.Context, e events.DynamoDBEvent) error {
 			var location V.Location
 
 			geoUrl := fmt.Sprintf("https://api.ipgeolocation.io/ipgeo?apiKey=%s&ip=%s&fields=geo&excludes=continent_code,continent_name,zipcode,latitude,longitude,city,district,country_code3", os.Getenv("IPGEO_API_KEU"), visit.IP)
-
-			fmt.Println(geoUrl)
 
 			resp, fetchErr := http.Get(geoUrl)
 
@@ -147,14 +198,21 @@ func Handler(ctx context.Context, e events.DynamoDBEvent) error {
 			var visits V.Link
 			table.Get("PK", v["PK"]).Range("SK", dynamo.Equal, v["User"]).One(&visits)
 
+			fmt.Print("!!!!!!!!!!!!!!")
+			fmt.Println(visits)
+
 			vc := updateVisitCounter(visits.Visits, visit.Location)
 			lc := updateLanguageCounter(visits.Languages, visit.Language)
+			rc := updateRefererCounter(visits.Referers, visit.Referer)
+			uac := updateUserAgentCounter(visits.UserAgents, visit.UserAgent)
 
 			mvc, marshallErr := dynamo.MarshalItem(vc)
 			mlc, _ := dynamo.MarshalItem(lc)
+			mrc, _ := dynamo.MarshalItem(rc)
+			muac, _ := dynamo.MarshalItem(uac)
 
 			//update the LINK item with new aggregated data
-			e := table.Update("PK", v["PK"]).Range("SK", v["User"]).Set("Visits", mvc).Set("Languages", mlc).Run()
+			e := table.Update("PK", v["PK"]).Range("SK", v["User"]).Set("Visits", mvc).Set("Languages", mlc).Set("UserAgents", muac).Set("Referers", mrc).Run()
 
 			if e != nil {
 				fmt.Print("ERROR:")

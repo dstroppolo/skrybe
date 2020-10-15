@@ -13,16 +13,25 @@ import (
 )
 
 type Link struct {
-	PK        string
-	SK        string
-	Url       string
-	Visits    VisitCounter
-	Languages map[string]int
+	PK         string
+	SK         string
+	Url        string
+	Visits     VisitCounter
+	UserAgents UserAgentCounter
+	Referers   map[string]int
+	Languages  map[string]int
 }
 
 type VisitCounter struct {
 	Total     int
 	Locations map[string]map[string]int
+}
+
+type UserAgentCounter struct {
+	Browser  map[string]int
+	IsMobile int
+	OS       map[string]int
+	Platform map[string]int
 }
 
 type Visit struct {
